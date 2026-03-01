@@ -5,7 +5,7 @@
 
 ---
 
-# Núcleo
+## Núcleo
 
 - [Base.moon](API/Base.md)
 - [ClassFactory.lua](API/ClassFactory.md)
@@ -17,7 +17,7 @@
 
 ---
 
-# Parser
+## Parser
 
 - [Parser/Sections.moon](API/Parser.Sections.md)
 - [Parser/LineText.moon](API/Parser.LineText.md)
@@ -25,7 +25,7 @@
 
 ---
 
-# Primitive
+## Primitive
 
 - [Primitive/Number.moon](API/Primitive.Number.md)
 - [Primitive/Point.moon](API/Primitive.Point.md)
@@ -34,7 +34,7 @@
 
 ---
 
-# Section
+## Section
 
 - [Section/Text.moon](API/Section.Text.md)
 - [Section/Tag.moon](API/Section.Tag.md)
@@ -43,7 +43,7 @@
 
 ---
 
-# Draw
+## Draw
 
 - [Draw/DrawingBase.moon](API/Draw.DrawingBase.md)
 - [Draw/Contour.moon](API/Draw.Contour.md)
@@ -56,7 +56,7 @@
 
 ---
 
-# Tag
+## Tag
 
 - [Tag/Base.moon](API/Tag.Base.md)
 - [Tag/Align.moon](API/Tag.Align.md)
