@@ -6,14 +6,14 @@
 \t(...)
 ```
 
-Permite animar uno o varios tags en un intervalo de tiempo dentro de una línea.
+Permite animar uno o varios tags dentro de un intervalo de tiempo relativo al inicio de la línea.
 
 Es uno de los tags más complejos del sistema porque:
 
 - contiene otros tags internamente
 - tiene rango temporal (`t1`, `t2`)
 - puede tener aceleración (`accel`)
-- interactúa con `TagList.merge()` y `diff()`
+- interactúa con `TagList.merge()` y `TagList.diff()`
 
 ---
 
@@ -42,9 +42,11 @@ Ejemplos:
 Un `Tag.Transform` contiene:
 
 ## `startTime: ASS.Time | nil`
+
 Tiempo inicial relativo al inicio de la línea.
 
 ## `endTime: ASS.Time | nil`
+
 Tiempo final relativo al inicio de la línea.
 
 Si ambos son `nil`, el transform aplica a toda la duración de la línea.
@@ -52,21 +54,25 @@ Si ambos son `nil`, el transform aplica a toda la duración de la línea.
 ---
 
 ## `accel: number`
+
 Factor de aceleración.
 
 - `1` = lineal
-- `>1` = ease-in
-- `<1` = ease-out
+- `>1` = ease-in (curva más lenta al inicio)
+- `<1` = ease-out (curva más rápida al inicio)
+
+El valor se interpreta como potencia exponencial sobre el progreso temporal.
 
 ---
 
 ## `tags: {Tag...}`
+
 Lista de tags animados dentro del transform.
 
 Estos tags:
 
-- no afectan inmediatamente el estado base
-- se aplican dinámicamente durante el intervalo
+- no modifican inmediatamente el estado base
+- representan valores objetivo que el renderer interpolará en el intervalo
 
 ---
 
@@ -80,10 +86,12 @@ Estructura conceptual:
 
 ```lua
 ASS.Tag.Transform{
-  startTime = ASS.Time(...),
-  endTime   = ASS.Time(...),
+  startTime = ASS.Time(0),
+  endTime   = ASS.Time(1000),
   accel     = 1,
-  tags      = { Tag1, Tag2, ... }
+  tags      = {
+    ASS.Tag.FontSize{ value = 60 }
+  }
 }
 ```
 
@@ -98,7 +106,7 @@ Serializa el transform nuevamente a formato ASS.
 Ejemplo resultado:
 
 ```
-\t(0,500,1,\fs60\alpha&H00&)
+\t(0,1000,1,\fs60)
 ```
 
 ---
@@ -113,12 +121,13 @@ Devuelve una copia profunda del transform:
 
 ---
 
-## `getDuration(lineDuration?) -> Time`
+## `equal(other) -> boolean`
 
-Devuelve la duración efectiva del transform.
+Compara:
 
-- Si tiene `startTime` y `endTime`, devuelve `endTime - startTime`
-- Si no, puede usar la duración completa de la línea (según implementación)
+- tiempos
+- accel
+- lista de tags internos
 
 ---
 
@@ -131,79 +140,62 @@ Cuando un `Section.Tag` se convierte en `TagList`:
 
 Esto es clave:
 
-`TagList.tags` representa el estado estático.
-`TagList.transforms` representa animaciones.
+- `TagList.tags` representa el estado estático base.
+- `TagList.transforms` representa animaciones declarativas.
+
+ASSFoundation **no ejecuta la animación**; solo modela su estructura.
 
 ---
 
-# Interacción con merge()
+# Interacción con `merge()`
 
 Durante `TagList.merge()`:
 
 - los transforms se concatenan
-- no se deduplican
-- si un tag animado también aparece como override normal posterior,
-  el override normal puede invalidar el efecto del transform previo
+- no se deduplican automáticamente
+- se preservan en el orden en que aparecen
+
+La resolución final en tiempo depende del renderer.
 
 ---
 
-# Interacción con diff()
+# Interacción con `diff()`
 
 `TagList.diff()`:
 
 - conserva transforms
-- considera que un transform en `previous` afecta el estado
-- puede requerir generar override aunque el valor base coincida
+- considera que un transform modifica el comportamiento dinámico
+- no los colapsa dentro del estado estático
 
 Esto es importante para generar overrides mínimos correctos.
 
 ---
 
-# Aplicación conceptual (cómo funciona en runtime)
+# Aplicación conceptual (en el renderer)
 
-En tiempo `t`:
+En tiempo `t`, el renderer típicamente:
 
-1) Se parte del estado base (`TagList.tags`)
-2) Se evalúan transforms activos en ese tiempo
+1) Parte del estado base (`TagList.tags`)
+2) Evalúa transforms activos en ese instante
 3) Para cada tag animado:
-   - se calcula interpolación según `accel`
-   - se aplica sobre el estado base
+   - calcula progreso:
+     ```
+     progress = (t - t1) / (t2 - t1)
+     progress = progress ^ accel
+     ```
+   - interpola valor inicial → valor objetivo
 
-Interpolación típica:
-
-```
-progress = (t - t1) / (t2 - t1)
-progress = progress ^ accel
-```
-
-Luego se interpola valor inicial → valor final.
+> Esta interpolación la realiza el renderer (libass/VSFilter), no ASSFoundation.
 
 ---
 
-# Limitaciones
+# Limitaciones y consideraciones
 
 - No todos los tags son transformables.
 - Tags con `__tag.transformable == false` no deberían animarse.
-- Multi-tags (ej. karaoke) no suelen estar dentro de transforms.
-- Algunos tags (ej. clip vectorial complejo) pueden requerir lógica especial.
-
----
-
-# Ejemplo completo
-
-```lua
-local tr = ASS.Tag.Transform{
-  startTime = ASS.Time(0),
-  endTime   = ASS.Time(1000),
-  accel     = 1,
-  tags = {
-    ASS.Tag.FontSize{ value = 60 }
-  }
-}
-
-print(tr:getTagString())
--- \t(0,1000,1,\fs60)
-```
+- Multi-tags (ej. karaoke) normalmente no se usan dentro de transforms.
+- Tags complejos (ej. clips vectoriales) pueden requerir soporte específico del renderer.
+- Múltiples transforms pueden solaparse.
 
 ---
 
@@ -213,19 +205,10 @@ print(tr:getTagString())
 {\fs40\t(0,500,\fs60)\t(500,1000,\fs40)}Texto
 ```
 
-Flujo:
+Conceptualmente:
 
 - 0–500ms → interpola 40 → 60
 - 500–1000ms → interpola 60 → 40
-
----
-
-# Notas importantes
-
-- Los tiempos son relativos al inicio de la línea.
-- Si `t1 > t2`, comportamiento depende del renderer (generalmente ignorado).
-- `accel` no es easing complejo, solo potencia exponencial.
-- Múltiples transforms pueden solaparse.
 
 ---
 
@@ -233,9 +216,9 @@ Flujo:
 
 `Tag.Transform` es:
 
-- un contenedor de animaciones
+- un contenedor declarativo de animaciones
 - dependiente de `Primitive.Time`
 - gestionado por `TagList`
-- aplicado dinámicamente en evaluación por frame
+- evaluado dinámicamente por el renderer
 
-Es uno de los componentes más complejos de ASSFoundation.
+Es uno de los componentes más complejos del sistema de tags ASS.
